@@ -1,28 +1,31 @@
+import re
+
 import pandas as pd
 
 
 def parse_jam(value):
     text = str(value).strip()
 
-    if ":" in text:
-        jam, menit = text.split(":", 1)
-        return int(jam) + int(menit) / 60
+    try:
+        if ":" in text:
+            jam, menit = text.split(":", 1)
+            nilai = int(jam) + int(menit) / 60
+        else:
+            nilai = float(text)
+    except (TypeError, ValueError):
+        return 0.0
 
-    return float(text)
+    return min(max(nilai, 0.0), 23.99)
 
 
-# definikan skor cidera
-def skor_cidera(kode):
-    kode = str(kode).upper()
+def bersihkan_teks(value, default="TIDAK DIKETAHUI"):
+    text = str(value).strip().upper()
+    text = re.sub(r"\s+", " ", text)
 
-    if "MD" in kode:  # meninggal dunia
-        return 100
-    elif "CT" in kode:  # cidera tubuh
-        return 80
-    elif "LL" in kode:  # luka-luka / luka ringan
-        return 70
-    else:
-        return 30  # property damage, dll
+    if text in ("", "-", "NAN", "NONE"):
+        return default
+
+    return text
 
 
 # definisikan skor karakteristik
@@ -47,23 +50,47 @@ def skor_karakteristik(kode):
     return 30
 
 
+def kategori_aktual_risiko(kode_cidera):
+    kode_cidera = str(kode_cidera).upper()
+
+    if "MD" in kode_cidera or "CT" in kode_cidera:
+        return "TINGGI"
+    elif "LL" in kode_cidera:
+        return "SEDANG"
+
+    return "RENDAH"
+
+
 def prepare_data(path="datakecminim.csv"):
     df = pd.read_csv(path)
 
-    df = df[["JAM", "KECAMATAN", "KODE_CIDERA", "KARAKTERISTIK LAKA"]].copy()
+    df = df[
+        [
+            "JAM",
+            "BULAN",
+            "KECAMATAN",
+            "PROFESI",
+            "KODE_CIDERA",
+            "KARAKTERISTIK LAKA",
+        ]
+    ].copy()
 
     df["JAM_ASLI"] = df["JAM"]
     df["JAM"] = df["JAM"].apply(parse_jam)
-    df["KECAMATAN"] = df["KECAMATAN"].astype(str)
-    df["KODE_CIDERA"] = df["KODE_CIDERA"].astype(str)
-    df["KARAKTERISTIK LAKA"] = df["KARAKTERISTIK LAKA"].astype(str)
+    df["BULAN"] = pd.to_numeric(df["BULAN"], errors="coerce").fillna(1)
+    df["BULAN"] = df["BULAN"].clip(lower=1, upper=12)
+    df["KECAMATAN"] = df["KECAMATAN"].apply(bersihkan_teks)
+    df["PROFESI"] = df["PROFESI"].apply(bersihkan_teks)
+    df["KODE_CIDERA"] = df["KODE_CIDERA"].apply(bersihkan_teks)
+    df["KARAKTERISTIK LAKA"] = df["KARAKTERISTIK LAKA"].apply(bersihkan_teks)
 
     # hitung frekuensi kecamatan
     df["FREQ_KECAMATAN"] = df["KECAMATAN"].map(df["KECAMATAN"].value_counts())
+    df["FREQ_PROFESI"] = df["PROFESI"].map(df["PROFESI"].value_counts())
 
-    df["SKOR_CIDERA"] = df["KODE_CIDERA"].apply(skor_cidera)
     df["SKOR_KARAKTERISTIK"] = df["KARAKTERISTIK LAKA"].apply(
         skor_karakteristik
     )
+    df["KATEGORI_AKTUAL"] = df["KODE_CIDERA"].apply(kategori_aktual_risiko)
 
     return df

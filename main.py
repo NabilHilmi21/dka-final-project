@@ -2,21 +2,41 @@ from pathlib import Path
 
 import matplotlib
 
-from models import kategori_risiko, mamdani, sugeno
+from models import contoh_rules, jumlah_rules, kategori_risiko, mamdani, sugeno
 from schemas import prepare_data
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+SKOR_AKTUAL = {
+    "RENDAH": 25,
+    "SEDANG": 50,
+    "TINGGI": 85,
+}
+
+
 def hitung_risiko(row):
     jam = row["JAM"]
-    frekuensi = row["FREQ_KECAMATAN"]
-    cidera = row["SKOR_CIDERA"]
+    bulan = row["BULAN"]
+    freq_kecamatan = row["FREQ_KECAMATAN"]
+    freq_profesi = row["FREQ_PROFESI"]
     karakteristik = row["SKOR_KARAKTERISTIK"]
 
-    nilai_mamdani = mamdani(jam, frekuensi, cidera, karakteristik)
-    nilai_sugeno = sugeno(jam, frekuensi, cidera, karakteristik)
+    nilai_mamdani = mamdani(
+        jam,
+        bulan,
+        freq_kecamatan,
+        freq_profesi,
+        karakteristik,
+    )
+    nilai_sugeno = sugeno(
+        jam,
+        bulan,
+        freq_kecamatan,
+        freq_profesi,
+        karakteristik,
+    )
 
     return {
         "NILAI_MAMDANI": round(nilai_mamdani, 2),
@@ -24,6 +44,101 @@ def hitung_risiko(row):
         "NILAI_SUGENO": round(nilai_sugeno, 2),
         "KATEGORI_SUGENO": kategori_risiko(nilai_sugeno),
     }
+
+
+def hitung_akurasi_model(df, kolom_prediksi):
+    total = len(df)
+    jumlah_benar = (df[kolom_prediksi] == df["KATEGORI_AKTUAL"]).sum()
+    akurasi = jumlah_benar / total * 100 if total else 0
+
+    return {
+        "JUMLAH_BENAR": jumlah_benar,
+        "TOTAL_DATA": total,
+        "AKURASI": round(akurasi, 2),
+    }
+
+
+def hitung_mae_model(df, kolom_nilai):
+    nilai_aktual = df["KATEGORI_AKTUAL"].map(SKOR_AKTUAL)
+    error_absolut = (df[kolom_nilai] - nilai_aktual).abs()
+
+    return round(error_absolut.mean(), 2)
+
+
+def evaluasi_akurasi(df):
+    return {
+        "Mamdani": hitung_akurasi_model(df, "KATEGORI_MAMDANI"),
+        "Sugeno": hitung_akurasi_model(df, "KATEGORI_SUGENO"),
+    }
+
+
+def evaluasi_mae(df):
+    return {
+        "Mamdani": hitung_mae_model(df, "NILAI_MAMDANI"),
+        "Sugeno": hitung_mae_model(df, "NILAI_SUGENO"),
+    }
+
+
+def print_perbandingan_akurasi(hasil_akurasi):
+    print("\nPERBANDINGAN AKURASI PREDIKSI RISIKO")
+    print("=" * 80)
+    print("Label aktual dihitung dari KODE_CIDERA")
+    print("MD/CT = TINGGI, LL = SEDANG, selain itu = RENDAH\n")
+    print("MODEL     BENAR  TOTAL  AKURASI")
+    print("-" * 32)
+
+    for model, hasil in hasil_akurasi.items():
+        print(
+            f"{model:<8}  "
+            f"{hasil['JUMLAH_BENAR']:>5}  "
+            f"{hasil['TOTAL_DATA']:>5}  "
+            f"{hasil['AKURASI']:>6.2f}%"
+        )
+
+    selisih = hasil_akurasi["Sugeno"]["AKURASI"] - hasil_akurasi["Mamdani"]["AKURASI"]
+
+    if selisih > 0:
+        print(f"\nSugeno lebih akurat {selisih:.2f}% dibanding Mamdani.")
+    elif selisih < 0:
+        print(f"\nMamdani lebih akurat {abs(selisih):.2f}% dibanding Sugeno.")
+    else:
+        print("\nAkurasi Mamdani dan Sugeno sama.")
+
+
+def print_perbandingan_mae(hasil_mae):
+    print("\nPERBANDINGAN MAE NILAI RISIKO")
+    print("=" * 80)
+    print("Skor aktual: RENDAH=25, SEDANG=50, TINGGI=85")
+    print("MODEL       MAE")
+    print("-" * 18)
+
+    for model, mae in hasil_mae.items():
+        print(f"{model:<8}  {mae:>6.2f}")
+
+    selisih = hasil_mae["Sugeno"] - hasil_mae["Mamdani"]
+
+    if selisih > 0:
+        print(f"\nMamdani memiliki MAE lebih kecil {selisih:.2f} poin.")
+    elif selisih < 0:
+        print(f"\nSugeno memiliki MAE lebih kecil {abs(selisih):.2f} poin.")
+    else:
+        print("\nMAE Mamdani dan Sugeno sama.")
+
+
+def print_rule_base():
+    print("\nRINGKASAN RULE BASE")
+    print("=" * 80)
+    print(f"Jumlah rule yang digunakan: {jumlah_rules()}")
+    print("Contoh 15 rule pertama:")
+
+    for index, rule in enumerate(contoh_rules(15), start=1):
+        print(
+            f"{index:>2}. IF jam={rule['jam']} AND bulan={rule['bulan']} "
+            f"AND freq_kecamatan={rule['freq_kecamatan']} "
+            f"AND freq_profesi={rule['freq_profesi']} "
+            f"AND karakteristik={rule['karakteristik']} "
+            f"THEN risiko={rule['output']}"
+        )
 
 
 def buat_visualisasi(df):
@@ -167,21 +282,92 @@ def buat_visualisasi(df):
     fig.savefig(output_dir / "proporsi_mamdani.png", dpi=160)
     plt.close(fig)
 
+    hasil_akurasi = evaluasi_akurasi(df)
+    model_names = list(hasil_akurasi.keys())
+    nilai_akurasi = [hasil_akurasi[model]["AKURASI"] for model in model_names]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bars = ax.bar(
+        model_names,
+        nilai_akurasi,
+        color=[warna_mamdani, warna_sugeno],
+        width=0.5,
+    )
+    ax.set_title("Perbandingan Akurasi Prediksi Risiko")
+    ax.set_xlabel("Metode Fuzzy")
+    ax.set_ylabel("Akurasi (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(axis="y", alpha=0.25)
+
+    for bar, nilai in zip(bars, nilai_akurasi):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 1,
+            f"{nilai:.2f}%",
+            ha="center",
+            va="bottom",
+        )
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "akurasi_model.png", dpi=160)
+    plt.close(fig)
+
+    hasil_mae = evaluasi_mae(df)
+    nilai_mae = [hasil_mae[model] for model in model_names]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bars = ax.bar(
+        model_names,
+        nilai_mae,
+        color=[warna_mamdani, warna_sugeno],
+        width=0.5,
+    )
+    ax.set_title("Perbandingan MAE Nilai Risiko")
+    ax.set_xlabel("Metode Fuzzy")
+    ax.set_ylabel("MAE")
+    ax.grid(axis="y", alpha=0.25)
+
+    for bar, nilai in zip(bars, nilai_mae):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.2,
+            f"{nilai:.2f}",
+            ha="center",
+            va="bottom",
+        )
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "mae_model.png", dpi=160)
+    plt.close(fig)
+
     return output_dir
 
 
 def main():
     df = prepare_data("datakecminim.csv")
 
+    print("SUMBER DATASET")
+    print("=" * 80)
+    print("Kaggle - data kecelakaan")
+    print("https://www.kaggle.com/datasets/aginanjar/data-kecelakaan")
+    print(f"Jumlah data: {len(df)} row")
+    print("Input fuzzy: JAM, BULAN, FREQ_KECAMATAN, FREQ_PROFESI, SKOR_KARAKTERISTIK")
+    print("Output/ground truth: KODE_CIDERA -> KATEGORI_AKTUAL")
+    print_rule_base()
+
     hasil_risiko = df.apply(hitung_risiko, axis=1, result_type="expand")
     df = df.join(hasil_risiko)
 
     kolom_output = [
         "JAM_ASLI",
+        "BULAN",
         "KECAMATAN",
         "FREQ_KECAMATAN",
+        "PROFESI",
+        "FREQ_PROFESI",
         "KODE_CIDERA",
         "KARAKTERISTIK LAKA",
+        "KATEGORI_AKTUAL",
         "NILAI_MAMDANI",
         "KATEGORI_MAMDANI",
         "NILAI_SUGENO",
@@ -197,6 +383,11 @@ def main():
 
     print("\nRINGKASAN KATEGORI SUGENO")
     print(df["KATEGORI_SUGENO"].value_counts().to_string())
+
+    hasil_akurasi = evaluasi_akurasi(df)
+    print_perbandingan_akurasi(hasil_akurasi)
+    hasil_mae = evaluasi_mae(df)
+    print_perbandingan_mae(hasil_mae)
 
     output_dir = buat_visualisasi(df)
     print(f"\nVisualisasi disimpan di folder: {output_dir}")
