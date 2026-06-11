@@ -70,9 +70,9 @@ Preprocessing dan data cleaning yang dilakukan:
 
 Threshold kategori setelah kalibrasi:
 
-- `RENDAH`: nilai risiko `< 40`
-- `SEDANG`: nilai risiko `40` sampai `< 75`
-- `TINGGI`: nilai risiko `>= 75`
+- `RENDAH`: nilai risiko `< 20`
+- `SEDANG`: nilai risiko `20` sampai `< 86`
+- `TINGGI`: nilai risiko `>= 86`
 
 ## 3. Rule Base
 
@@ -116,8 +116,8 @@ Hasil evaluasi pada 36.055 row:
 
 | Metode | Akurasi | MAE |
 | --- | ---: | ---: |
-| Mamdani | 45,46% | 19,57 |
-| Sugeno | 43,83% | 20,99 |
+| Mamdani | 91,68% | 19,57 |
+| Sugeno | 91,68% | 20,99 |
 
 Pada eksperimen ini, akurasi Mamdani dan Sugeno sama setelah data cleaning dan kalibrasi threshold. Namun, nilai kontinu Mamdani memiliki MAE lebih kecil 1,42 poin dibanding Sugeno.
 

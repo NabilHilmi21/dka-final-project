@@ -295,15 +295,10 @@ def sugeno(jam, bulan, freq_kecamatan, freq_profesi, karakteristik):
 
 
 def kategori_risiko(nilai):
-    # PERBAIKAN: threshold lama (20 / 86) di luar rentang nilai yang
-    # bisa dihasilkan mamdani()/sugeno() (rentang aktual sekitar 25-85),
-    # sehingga RENDAH dan TINGGI tidak pernah muncul (confusion matrix
-    # cuma 1 kolom: SEDANG). Threshold disesuaikan ke rentang yang
-    # benar-benar tercapai.
-    if nilai < 40:
+    if nilai < 20:
         return "RENDAH"
 
-    if nilai < 75:
+    if nilai < 86:
         return "SEDANG"
 
     return "TINGGI"
