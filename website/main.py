@@ -73,7 +73,6 @@ st.set_page_config(
     layout="wide",
 )
 
-
 @st.cache_data(show_spinner=False)
 def load_raw_data():
     return pd.read_csv(DATA_PATH)
@@ -140,6 +139,15 @@ def get_evaluation(df):
             "MAE": [mae_mamdani, mae_sugeno],
         }
     )
+
+
+@st.cache_data(show_spinner=False)
+def get_mae_scores(df):
+    nilai_aktual = df["KATEGORI_AKTUAL"].map(SKOR_AKTUAL)
+    mae_df = df[["KATEGORI_AKTUAL"]].copy()
+    mae_df["Mamdani"] = (df["NILAI_MAMDANI"] - nilai_aktual).abs()
+    mae_df["Sugeno"] = (df["NILAI_SUGENO"] - nilai_aktual).abs()
+    return mae_df
 
 
 def intro():
@@ -480,9 +488,44 @@ def bar_chart(title, labels, values, ylabel, colors=None, ylim=None):
     return fig
 
 
+def grouped_bar_chart(title, categories, series, ylabel, colors=None):
+    x_positions = range(len(categories))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    for index, (label, values) in enumerate(series.items()):
+        offsets = [x + (index - 0.5) * width for x in x_positions]
+        bars = ax.bar(
+            offsets,
+            values,
+            width,
+            label=label,
+            color=colors[index] if colors else None,
+        )
+        for bar, value in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"{value:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.set_xticks(list(x_positions))
+    ax.set_xticklabels(categories)
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 def section_evaluation(df_result):
     st.header("7. Evaluasi Akurasi, MAE, dan Confusion Matrix")
     evaluasi = get_evaluation(df_result)
+    mae_scores = get_mae_scores(df_result)
     metric_cards(load_raw_data(), load_clean_data(), df_result)
 
     st.subheader("Tabel Evaluasi")
@@ -510,6 +553,50 @@ def section_evaluation(df_result):
                 colors=["#2563eb", "#dc2626"],
             )
         )
+
+    st.subheader("Visualisasi MAE Score")
+    st.caption(
+        "MAE dihitung dari selisih absolut antara nilai risiko hasil model dan "
+        "skor aktual kategori: RENDAH=25, SEDANG=50, TINGGI=85."
+    )
+
+    mae_per_kategori = (
+        mae_scores.groupby("KATEGORI_AKTUAL")[["Mamdani", "Sugeno"]]
+        .mean()
+        .reindex(KATEGORI_ORDER, fill_value=0)
+    )
+
+    col_mae_a, col_mae_b = st.columns(2)
+    with col_mae_a:
+        st.pyplot(
+            grouped_bar_chart(
+                "MAE per Kategori Aktual",
+                KATEGORI_ORDER,
+                {
+                    "Mamdani": mae_per_kategori["Mamdani"],
+                    "Sugeno": mae_per_kategori["Sugeno"],
+                },
+                "MAE",
+                colors=["#2563eb", "#dc2626"],
+            )
+        )
+    with col_mae_b:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.boxplot(
+            [mae_scores["Mamdani"], mae_scores["Sugeno"]],
+            labels=["Mamdani", "Sugeno"],
+            patch_artist=True,
+            boxprops={"facecolor": "#bfdbfe", "alpha": 0.8},
+            medianprops={"color": "#111827", "linewidth": 2},
+        )
+        ax.set_title("Sebaran Absolute Error")
+        ax.set_ylabel("Absolute Error")
+        ax.grid(axis="y", alpha=0.25)
+        fig.tight_layout()
+        st.pyplot(fig)
+
+    st.write("Rata-rata MAE per kategori aktual")
+    st.dataframe(mae_per_kategori.round(2), use_container_width=True)
 
     col_a, col_b = st.columns(2)
     with col_a:
