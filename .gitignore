@@ -21,7 +21,7 @@ laporan*.tex
 laporan*.html
 
 # Python generated report
-buat_lapaoran_pdf.py
+buat_laporan_pdf.py
 
 # Python cache
 __pycache__/
@@ -45,6 +45,11 @@ ENV/
 # Logs
 *.log
 logs/
+
+# Streamlit local files
+.streamlit/secrets.toml
+website/.streamlit/secrets.toml
+website/*.log
 
 # Test / coverage cache
 .pytest_cache/
