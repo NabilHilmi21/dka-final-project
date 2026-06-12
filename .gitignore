@@ -20,6 +20,9 @@ laporan*.docx
 laporan*.tex
 laporan*.html
 
+# Python generated report
+buat_lapaoran_pdf.py
+
 # Python cache
 __pycache__/
 *.py[cod]
